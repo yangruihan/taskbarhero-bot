@@ -727,6 +727,13 @@ def _data_anchors(ddir):
                         ("cube_resultevt","Action<ECubeSynthesisResult>",0)):
         v=cbt(typ,idx)
         if v is not None: out[sym]=v
+    # ---------- cube_level_off = nivel do cubo (ObscuredInt) ----------
+    # Era HARDCODED (0x1CC) e o update de 30/07 moveu pra 0x1D8, fazendo cube_level ler lixo (-10) e o
+    # botao "Cubo nivel 100" escrever no campo errado. A classe Cube tem UM UNICO ObscuredInt static
+    # (o nivel) -> auto-extrai por isso, imune a proximos updates. So grava se for inequivoco.
+    if cube:
+        obs=[f[2] for f in cube.fields if f[0]=="ObscuredInt" and f[3]]
+        if len(obs)==1: out["cube_level_off"]=obs[0]
     # ---------- ilx = 1o (menor RVA) static void(ERecipeType) na Cube ----------
     if cube:
         cand=sorted(rva for rva,sig in cube.methods
@@ -2776,13 +2783,18 @@ class Engine:
         cs=self.sym.get("cube_slot")
         if not cs: return None
         k=self.u64(self.base+cs); return self.u64(k+STATIC_FIELDS_OFF) if self.vptr(k) else None
-    CUBE_LEVEL_OFF=0x1CC; CUBE_MAX_LEVEL=100          # uw.Cube.bese (ObscuredInt) = nivel RUNTIME do cubo
+    CUBE_LEVEL_OFF=0x1CC; CUBE_MAX_LEVEL=100          # FALLBACK: nivel do cubo (ObscuredInt). O real vem
+                                                      # de sym["cube_level_off"] (auto-extraido): o update de
+                                                      # 30/07 moveu 0x1CC->0x1D8 e o hardcode passou a ler lixo.
+    def _cube_level_off(self):
+        v=self.sym.get("cube_level_off")
+        return v if isinstance(v,int) else self.CUBE_LEVEL_OFF
     def cube_level(self):
-        """Nivel atual do CUBO (ObscuredInt bese @ _cube_sf()+0x1CC). None se o cubo nao resolveu."""
+        """Nivel atual do CUBO (ObscuredInt @ _cube_sf()+cube_level_off). None se o cubo nao resolveu."""
         sf=self._cube_sf()
-        return self._obs_int(sf+self.CUBE_LEVEL_OFF) if sf else None
+        return self._obs_int(sf+self._cube_level_off()) if sf else None
     def set_cube_level(self, level=None):
-        """Sobe o nivel do CUBO (runtime ObscuredInt bese) p/ liberar a sintese de itens 65~80.
+        """Sobe o nivel do CUBO (runtime ObscuredInt) p/ liberar a sintese de itens 65~80.
         O nivel indexa a lista de recipes (bam.mey): cubo baixo NAO enxerga o tier 65+. So o runtime conta —
         o save int (cubeSaveLevelData) nao tem xref no codigo e re-serializa por cima, entao nao mexo nele.
         AVISO (provado ao vivo): como qualquer ObscuredInt, o honesty-check periodico do ACTk (~12s) fecha o
@@ -2791,7 +2803,14 @@ class Engine:
         level=self.CUBE_MAX_LEVEL if level is None else int(level)
         sf=self._cube_sf()
         if not sf: return False, level
-        return self._obs_set(sf+self.CUBE_LEVEL_OFF, level), level
+        # GUARD: se a leitura atual vier absurda (fora de 1..CUBE_MAX_LEVEL), o offset esta errado —
+        # NAO escreve (escreveria num campo errado do cubo). Um update que mova o campo cai aqui em vez
+        # de corromper. cube_level==0 e legitimo (cubo trancado), entao so barra o claramente-invalido.
+        cur=self._obs_int(sf+self._cube_level_off())
+        if cur is None or cur<0 or cur>self.CUBE_MAX_LEVEL+50:
+            self.log("cube: leitura de nivel invalida (%s) — offset provavelmente mudou; NAO escrevo"%cur)
+            return False, level
+        return self._obs_set(sf+self._cube_level_off(), level), level
     def _synth_busy(self):
         sf=self._cube_sf()
         if not sf: return True

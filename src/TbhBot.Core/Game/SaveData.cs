@@ -17,7 +17,10 @@ public sealed class SaveData(
     SymbolTable sym,
     Il2CppResolver resolver)
 {
-    private const int CubeLevelOff = 0x1CC;   // uw.Cube.bese (ObscuredInt) = nivel RUNTIME do cubo
+    // FALLBACK: nivel do cubo. O real vem de sym["cube_level_off"] (auto-extraido do dump). O update de
+    // 30/07 moveu 0x1CC->0x1D8 e o hardcode passou a ler lixo (-10 medido ao vivo) — auto-extrair evita.
+    private const int CubeLevelOffFallback = 0x1CC;
+    private int CubeLevelOff => (int)(sym.Has("cube_level_off") ? sym.Get("cube_level_off") : CubeLevelOffFallback);
     public const int StageMaxKey = 4310;      // TORMENT 3-10 = maior key (libera 120/120)
     public const int CubeMaxLevel = 100;
 
@@ -89,6 +92,10 @@ public sealed class SaveData(
     {
         nint sf = CubeStaticFields();
         if (sf == 0) return (false, level);
+        // GUARD: se a leitura atual vier absurda (fora de 0..150), o offset esta errado — NAO escreve,
+        // senao gravaria num campo errado do cubo. Um update que mova o campo cai aqui em vez de corromper.
+        int? cur = ObscuredValue.ReadInt(mem, sf + CubeLevelOff);
+        if (cur is null or < 0 or > CubeMaxLevel + 50) return (false, level);
         return (ObscuredValue.WriteInt(mem, sf + CubeLevelOff, level), level);
     }
 
