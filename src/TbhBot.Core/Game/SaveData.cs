@@ -107,7 +107,7 @@ public sealed class SaveData(
         var outd = new Dictionary<int, int>();
         nint psd = resolver.ResolvePsd();
         if (psd == 0) return outd;
-        nint lst = mem.ReadPtr(psd + GameConstants.RuneListOff);
+        nint lst = mem.ReadPtr(psd + (nint)sym.Get("PlayerSaveData.RuneSaveData", GameConstants.RuneListOff));
         if (lst == 0) return outd;
         nint arr = mem.ReadPtr(lst + 0x10);
         uint size = mem.ReadU32(lst + 0x18);
@@ -132,7 +132,7 @@ public sealed class SaveData(
         level = Math.Max(0, level);
         nint psd = resolver.ResolvePsd();
         if (psd == 0) return false;
-        nint lst = mem.ReadPtr(psd + GameConstants.RuneListOff);
+        nint lst = mem.ReadPtr(psd + (nint)sym.Get("PlayerSaveData.RuneSaveData", GameConstants.RuneListOff));
         if (lst == 0) return false;
         nint arr = mem.ReadPtr(lst + 0x10);
         uint size = mem.ReadU32(lst + 0x18);

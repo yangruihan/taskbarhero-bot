@@ -69,8 +69,12 @@ public static class GameConstants
     public const int InvPsdOff = 0x28;
     public const int InvListOff = 0xA8;
 
-    // PlayerSaveData.RuneSaveData (List<RuneSaveData{RuneKey@0x10,Level@0x14}>)
-    public const int RuneListOff = 0x80;
+    // FALLBACK: PlayerSaveData.RuneSaveData (List<RuneSaveData{RuneKey@0x10,Level@0x14}>).
+    // O real vem de sym["PlayerSaveData.RuneSaveData"] (auto-extraido). Update de 30/07 moveu 0x80->0x90
+    // e 0x80 virou attributeSaveDatas -- que tem layout IDENTICO ({Key@0x10,Level@0x14}), entao escrever
+    // ali corrompia os pontos de atributo do heroi SEM disparar nenhum guard. Este fallback so entra se
+    // o json vier sem o simbolo; mantido em 0x90 pra apontar pro build atual.
+    public const int RuneListOff = 0x90;
 
     public const string AobGodmode = "57 48 83 EC 50 80 3D ?? ?? ?? ?? ?? 41 0F ?? ?? 48 8B DA";
 
