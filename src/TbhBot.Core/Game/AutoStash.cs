@@ -74,6 +74,21 @@ public sealed class AutoStash(
     }
 
     /// <summary>(slots de inventário OCUPADOS, slots de baú LIVRES) — para verificar o move.</summary>
+    /// <summary>Nº de slots LIVRES (desbloqueado + vazio) no inventário. -1 se não conseguiu ler
+    /// (para o auto-box NÃO pausar por engano quando a leitura falha).</summary>
+    public int InvFree()
+    {
+        var slots = SlotObjs(_sym.Get("inv_slots_off", 0x88));
+        if (slots.Count == 0) return -1;
+        int free = 0;
+        foreach (var o in slots)
+        {
+            var d = _mem.ReadBytes(o + 0x10, 0x11);                          // idx@0, uid@8, unlock@0x10
+            if (d.Length >= 0x11 && d[0x10] != 0 && BitConverter.ToUInt64(d, 8) == 0) free++;
+        }
+        return free;
+    }
+
     public (int InvOccupied, int StashFree) SlotCounts()
     {
         int inv = 0, stash = 0;

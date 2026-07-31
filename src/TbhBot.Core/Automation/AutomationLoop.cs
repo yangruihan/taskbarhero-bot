@@ -107,7 +107,10 @@ public sealed class AutomationLoop(Engine engine)
         bool did = false;
 
         // 1) CAIXA (prioridade máxima): acha as StageBox vivas + abre via dispatcher (llx main-thread).
-        if (engine.WantAutobox && engine.AutoBox.OpenAll(() => engine.WantAutobox && engine.IsAttached))
+        //    Gate de espaço: não abre se o inventário está cheio (a recompensa pode ser item e o servidor
+        //    rejeita -> "game will close" -> ciclo de fechar/reabrir, e possível perda). O auto-stash/fuse
+        //    (abaixo) esvaziam o inventário, então isto se auto-regula.
+        if (engine.WantAutobox && engine.AutoBox.OpenAll(() => engine.WantAutobox && engine.IsAttached, engine.AutoStash.InvFree))
             did = true;
 
         // 2) STASH em lote: move inventário -> baú (cmd2 = iw via dispatcher).

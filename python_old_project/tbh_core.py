@@ -2307,10 +2307,34 @@ class Engine:
                 b=self._iuw_count(2)
                 return bool(b is not None and b>b0)
         return False
+    def _inv_free(self):
+        """Nº de slots LIVRES (desbloqueado + vazio) no inventario. -1 se nao conseguiu ler (nao gateia
+        por engano nesse caso)."""
+        try:
+            psd,_=self._player_psd()
+            if not psd: return -1
+            lp=self.u64(psd+self.sym.get("inv_slots_off",0x88)); arr=self.u64(lp+0x10); sz=self.u32(lp+0x18)
+            if not arr or not sz: return -1
+            free=0
+            for i in range(min(sz,400)):
+                o=self.u64(arr+0x20+i*8)
+                if o and (self.rb(o+0x20,1) or b"\0")[0] and self.u64(o+0x18)==0: free+=1
+            return free
+        except Exception: return -1
+
     def _do_autobox(self):
-        """Abre TODAS as caixas esperando (iuw>0). Retorna True se abriu alguma. llx SEMPRE abre se
-        iuw>0 && iyf()==0 (provado, ate com o Cubo aberto). A recompensa pode ser ouro/gema -> o
-        inventario nao muda, mas iuw decrementa = caixa aberta -> loga."""
+        """Abre as caixas esperando (iuw>0). Retorna True se abriu alguma. A recompensa pode ser
+        ouro/gema (inventario nao muda) OU item (precisa de vaga). Se for item e o inventario estiver
+        cheio, o SERVIDOR rejeita -> popup 'game will close' -> jogo fecha -> watchdog reabre (ciclo).
+        Por isso: NAO abre se o inventario nao tem vaga -- checado antes de CADA abertura, entao abre
+        ate encher e para na que transbordaria. Se a recompensa for ouro, inv_free nao muda e ele segue."""
+        if self._inv_free()==0:
+            t=time.time()
+            if t-getattr(self,"_box_full_warn",0)>60:
+                self._box_full_warn=t
+                self.log("📦 inventario cheio — auto-box pausado (recompensa iria pro nada); "
+                         "auto-stash/fuse precisam abrir espaco primeiro")
+            return False
         boxes=self._find_stageboxes()
         if not boxes: return False
         klass=self.cache.get("sb_klass")
@@ -2325,6 +2349,7 @@ class Engine:
             if not tgt: continue
             cnt=self._iuw_count(t); guard=0
             while cnt and cnt>0 and guard<15 and self.want.get("autobox") and self.abx:
+                if self._inv_free()==0: return opened                        # encheu no meio da rajada -> para JA
                 if not self._valid_stagebox(tgt, klass):                     # morreu no meio -> re-scan
                     self.cache.pop("sb_inst", None)                          # (nunca clicar em cadaver: crasha)
                     tgt=self._find_stageboxes().get(t)

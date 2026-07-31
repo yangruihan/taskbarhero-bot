@@ -77,8 +77,25 @@ public sealed class AutoBox(MemoryAccess mem, SymbolTable sym, MemoryScanner sca
     private static readonly string[] Names = ["NORMAL", "BOSS", "ACTBOSS"];
 
     /// <summary>Abre todas as caixas esperando (iuw>0). <paramref name="keepGoing"/> = condição de continuar. True se abriu alguma.</summary>
-    public bool OpenAll(Func<bool> keepGoing)
+    private long _boxFullWarn;   // rate-limit do aviso de inventário cheio
+
+    /// <param name="invFree">Nº de slots livres no inventário (ou null p/ não gatear). Se 0, NÃO abre
+    /// caixa: a recompensa pode ser um item, e abrir com inventário cheio faz o SERVIDOR rejeitar
+    /// (popup "game will close" -> jogo fecha -> watchdog reabre = ciclo, e possível perda). Checado
+    /// antes de CADA abertura, então abre até encher e para na que transbordaria. -1 (falha de leitura)
+    /// não gateia.</param>
+    public bool OpenAll(Func<bool> keepGoing, Func<int>? invFree = null)
     {
+        if (invFree is not null && invFree() == 0)
+        {
+            long now = Environment.TickCount64;
+            if (now - _boxFullWarn > 60000)
+            {
+                _boxFullWarn = now;
+                Log?.Invoke("📦 inventário cheio — auto-box pausado (recompensa iria pro nada); auto-stash/fuse precisam abrir espaço primeiro");
+            }
+            return false;
+        }
         var boxes = FindStageBoxes();
         if (boxes.Count == 0) return false;
         long klass = _klass;
@@ -89,6 +106,7 @@ public sealed class AutoBox(MemoryAccess mem, SymbolTable sym, MemoryScanner sca
             int? cnt = IuwCount(t); int guard = 0;
             while (cnt is > 0 && guard < 15 && keepGoing())
             {
+                if (invFree is not null && invFree() == 0) return opened;     // encheu no meio da rajada -> para JÁ
                 if (!ValidStageBox(tgt, klass))                               // morreu no meio -> re-scan (nunca clicar em cadáver)
                 {
                     _cache = null;
