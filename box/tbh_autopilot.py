@@ -5,7 +5,7 @@ auto-evolution CONDICIONAL: so liga se o Torment 3-9 (4309) ainda nao estiver li
 (evolve leva o player ate la; ao chegar, troca pra endgame = auto-boss).
 NAO modifica o painel; usa o tbh_core baixado do GitHub + offsets do cache do exe.
 """
-import sys, time, json, threading, os
+import sys, time, json, threading, os, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception: pass
 HERE = r"C:\tbh_auto"
@@ -125,6 +125,43 @@ def popup_guard(e):
                 return org[0] + int((x0 + x1) / 2), org[1] + int((y0 + y1) / 2)
         return None
     desconhecido = [0.0]          # ultimo aviso de popup nao catalogado (rate-limit de 5 min)
+
+    # ---- DETECCAO DE CLIQUE QUE NAO PEGA ----------------------------------------------------
+    # MEDIDO ao vivo: uma box ficou ~20min clicando 'Close' do OFFLINE REWARDS a cada 2s sem efeito.
+    # Causa: uma thread do explorer do HOST travou segurando o foreground; o jogo e click-through,
+    # entao sem foco o Unity ignora o clique. O guard nao percebia e girava em silencio pra sempre.
+    # Agora ele mede: mesmo popup + muitas tentativas = clique nao esta pegando -> escala.
+    PRESO_SEG, PRESO_TENT = 120, 20
+    travado = {"tipo": None, "desde": 0.0, "tent": 0, "esc": 0, "ultimo_aviso": 0.0}
+
+    def marca(tipo):
+        """Conta tentativas no MESMO popup. Devolve True se ja passou do limite (clique nao pega)."""
+        agora = time.time()
+        if travado["tipo"] != tipo:
+            travado.update(tipo=tipo, desde=agora, tent=0, esc=0, ultimo_aviso=0.0)
+        travado["tent"] += 1
+        return (agora - travado["desde"] > PRESO_SEG) and travado["tent"] > PRESO_TENT
+
+    def escala(tipo):
+        """1a vez: reinicia o jogo (o watchdog reabre e a janela nova costuma retomar o foco).
+        Depois disso: avisa ALTO a cada 5min -- ha causas que so um restart da BOX resolve
+        (ex.: explorer do host travado segurando o foreground)."""
+        agora = time.time()
+        travado["esc"] += 1
+        if travado["esc"] == 1 and e.want.get("watchdog"):
+            log("⚠ popup [%s] nao fecha apos %d cliques em %ds — o clique nao esta pegando. "
+                "REINICIANDO O JOGO (watchdog reabre)." % (tipo, travado["tent"], int(agora - travado["desde"])))
+            try:
+                subprocess.run(["taskkill", "/F", "/IM", "TaskBarHero.exe"], capture_output=True, timeout=20)
+            except Exception as ex:
+                log("⚠ nao consegui reiniciar o jogo: %s" % ex)
+            travado.update(desde=agora, tent=0)          # da uma janela nova pro restart resolver
+            return
+        if agora - travado["ultimo_aviso"] > 300:
+            travado["ultimo_aviso"] = agora
+            log("🚨 popup [%s] SEGUE preso mesmo apos reiniciar o jogo — os cliques nao chegam na "
+                "janela. Causa tipica: thread do explorer travada segurando o foreground do desktop. "
+                "ISTO SO SE RESOLVE REINICIANDO A BOX. A conta esta PARADA ate la." % tipo)
     while True:
         try:
             if e.pm and e._proc_alive():
@@ -141,14 +178,17 @@ def popup_guard(e):
                             if hit:
                                 pos = btn(lines, org, "confirm")
                                 if pos:
-                                    log("popup bloqueante [%s] -> Confirm em %d,%d" % (hit, pos[0], pos[1]))
+                                    if marca(hit): escala(hit)
+                                    else: log("popup bloqueante [%s] -> Confirm em %d,%d" % (hit, pos[0], pos[1]))
                                     e._click_real(*pos); time.sleep(3); continue
                             # 2) offline/reward -> Close
                             if any(k in txt for k in POPUP_CLOSE):
                                 pos = btn(lines, org, "close")
                                 if pos:
-                                    log("popup OFFLINE REWARDS -> Close em %d,%d" % pos)
+                                    if marca("offline rewards"): escala("offline rewards")
+                                    else: log("popup OFFLINE REWARDS -> Close em %d,%d" % pos)
                                     e._click_real(*pos); time.sleep(1.5); continue
+                            travado["tipo"] = None       # nenhum popup casou -> nao esta preso
                             # 3) DESCONHECIDO: NAO clico as cegas (um Confirm tambem aparece em dialogo
                             #    legitimo do jogo, e aceitar por engano pode custar item). Mas AVISO:
                             #    sem esta linha um popup novo trava a box em SILENCIO -- foi assim que
