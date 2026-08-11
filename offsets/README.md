@@ -51,3 +51,6 @@ erro salva viraria um cache tóxico que nunca mais seria refeito.
 | `c824ed7a2bb1` | 2026-07-18 | build da v3.5/v4.0 |
 | `535f977c07ca` | 2026-07-22 | update que renomeou a base dos singletons (`nq`→`nr`) e a classe do cubo (`uu.Cube`→`ux.Cube`) |
 | `f2be0e20ad2b` | 2026-07-23 | o jogo anunciou este update com o popup `An update is required / Verify integrity of game files`. Extração limpa (17s, nada faltando); as âncoras todas seguraram. A assinatura do godmode continua casando em 14 lugares, então a busca pela cauda segue necessária |
+| `a8b994ee3986` | 2026-07-30 | o `PlayerSaveData` deslocou muito (`RuneSaveData` 0x80→0x90, `itemSaveDatas` 0xb0→0xc0, …). Expôs **dois offsets ainda hardcoded**: o da lista de runas (escrevia em `attributeSaveDatas`, de layout idêntico — corrompia os atributos do herói) e o do nível do cubo (0x1CC→0x1D8, lia lixo). Os dois viraram auto-extraídos |
+| `9655ccb67d45` | 2026-07-31 | `cube_level_off` mudou **de novo** (0x1D8→0x1D0) e veio certo sozinho — a prova de que auto-extrair foi a decisão certa |
+| `d2651aeb57f0` | 2026-08-11 | extração limpa, todas as âncoras seguraram. `cube_level_off` seguiu 0x1D0 e o offset de runa 0x90. Validado ao vivo: dispatcher instala, estágio/cubo/runas leem certo, godmode resolve |
